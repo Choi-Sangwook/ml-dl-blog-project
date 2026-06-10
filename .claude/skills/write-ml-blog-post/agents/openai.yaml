@@ -1,0 +1,4 @@
+interface:
+  display_name: "ML/DL 블로그 포스트 작성"
+  short_description: "PDF 강의를 입문자용 ML·DL 포스트로 작성·검토"
+  default_prompt: "Use $write-ml-blog-post to create or review a beginner-friendly Korean machine-learning or deep-learning post from the supplied PDF and Markdown draft."

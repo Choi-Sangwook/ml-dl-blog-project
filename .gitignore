@@ -1,0 +1,5 @@
+# 강의 원본 PDF는 git에 올리지 않음 (용량 · 저작권)
+sources/*.pdf
+sources/*.PDF
+sources/**/*.pdf
+sources/**/*.PDF
