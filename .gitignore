@@ -3,3 +3,9 @@ sources/*.pdf
 sources/*.PDF
 sources/**/*.pdf
 sources/**/*.PDF
+
+# Codex(codex exec)가 PDF 분석 중 루트에 만드는 스크래치 폴더
+# (래퍼가 자동 정리하지만, 정리 실패 시 git을 더럽히지 않도록 안전망으로 무시)
+/tmp/
+/tmp_*/
+/.tmp/
