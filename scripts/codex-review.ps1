@@ -56,9 +56,19 @@ $prompt = Get-Content -Raw -Encoding UTF8 -LiteralPath $PromptFile
 
 Write-Host "[codex-review] root=$Root sandbox=$Sandbox out=$OutLast" -ForegroundColor Cyan
 
-# Codex 가 PDF 분석 중 루트에 tmp* 스크래치 폴더를 만든다(우리 스크래치패드 규칙을 모름).
-# 실행 전 기존 tmp* 목록을 스냅샷해 두고, 실행 후 "새로 생긴 것만" 제거한다.
-$scratchBefore = @(Get-ChildItem -LiteralPath $Root -Force -ErrorAction SilentlyContinue |
+# Codex 는 PDF 페이지를 이미지로 렌더링하며 스크래치를 만든다.
+# 정책: 자동 삭제하지 않는다. 모든 코덱스 이미지 스크래치는 archive/image/ 한 곳에 모으고,
+#       삭제는 사용자가 나중에 일괄로 한다.
+# 프롬프트에서도 코덱스에 archive/image/ 아래에 저장하라고 지시하지만,
+# 지시를 어겨 루트에 스크래치(tmp_*, .codex_tmp 등)를 남긴 경우 아래 로직이 그것을
+# 삭제 대신 archive/image/ 로 "이동"해 루트를 깨끗하게 유지한다.
+$ImageDir = Join-Path $Root 'archive/image'
+if (-not (Test-Path -LiteralPath $ImageDir)) {
+  New-Item -ItemType Directory -Force -Path $ImageDir | Out-Null
+}
+
+# 실행 전 루트의 tmp*/.tmp 스냅샷(사용자 폴더 보호: 새로 생긴 것만 대상)
+$tmpBefore = @(Get-ChildItem -LiteralPath $Root -Force -ErrorAction SilentlyContinue |
   Where-Object { $_.Name -like 'tmp*' -or $_.Name -eq '.tmp' } | Select-Object -ExpandProperty Name)
 
 # 프롬프트는 stdin 으로 전달('-'). codex 가 PROMPTS.md 지시대로 reviews/ 에 결과를 직접 저장한다.
@@ -67,16 +77,25 @@ $prompt | & codex exec -s $Sandbox -C $Root -o $OutLast --color never --skip-git
 $code = $LASTEXITCODE
 
 if (-not $KeepScratch) {
-  $scratchAfter = @(Get-ChildItem -LiteralPath $Root -Force -ErrorAction SilentlyContinue |
+  $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+  # (a) 새로 생긴 tmp*/.tmp
+  $tmpAfter = @(Get-ChildItem -LiteralPath $Root -Force -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -like 'tmp*' -or $_.Name -eq '.tmp' } | Select-Object -ExpandProperty Name)
-  $new = $scratchAfter | Where-Object { $_ -notin $scratchBefore }
-  foreach ($n in $new) {
+  $newTmp = @($tmpAfter | Where-Object { $_ -notin $tmpBefore })
+  # (b) .codex_tmp* (재사용되어도 대상). `.codex` 설정 폴더는 제외하려고 `.codex_tmp` 로 좁게 매칭.
+  $codexScratch = @(Get-ChildItem -LiteralPath $Root -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like '.codex_tmp*' } | Select-Object -ExpandProperty Name)
+
+  foreach ($n in @($newTmp + $codexScratch | Select-Object -Unique)) {
+    $src = Join-Path $Root $n
+    $leaf = ($n -replace '^\.', 'dot_')          # 숨김 폴더가 되지 않도록 앞 점 치환
+    $dst = Join-Path $ImageDir ("{0}_{1}" -f $stamp, $leaf)
     try {
-      Remove-Item -LiteralPath (Join-Path $Root $n) -Recurse -Force -ErrorAction Stop
-      Write-Host "[codex-review] cleaned codex scratch -> $n" -ForegroundColor DarkGray
+      Move-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop
+      Write-Host "[codex-review] moved stray scratch -> archive/image/$(Split-Path $dst -Leaf)" -ForegroundColor DarkGray
     }
     catch {
-      Write-Host "[codex-review] could not remove scratch '$n': $($_.Exception.Message)" -ForegroundColor Yellow
+      Write-Host "[codex-review] could not move scratch '$n': $($_.Exception.Message)" -ForegroundColor Yellow
     }
   }
 }
